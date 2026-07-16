@@ -1,5 +1,6 @@
 import pytest
 from django.utils import timezone
+from django.utils.http import urlencode
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 from apps.audit.models import AuditLog
@@ -118,7 +119,8 @@ class TestAuditLogListView:
             created_at=now - timezone.timedelta(days=2)
         )
 
-        response = api_client.get(f'/api/v1/audit/logs?from_date={(now - timezone.timedelta(days=1)).isoformat()}')
+        from_date = (now - timezone.timedelta(days=1)).isoformat().replace("+", "%2B")
+        response = api_client.get(f"/api/v1/audit/logs?from={from_date}")
         assert response.status_code == 200
         assert len(response.data['results']) == 1
         assert response.data['results'][0]['id'] != past_log.id
@@ -165,5 +167,5 @@ class TestAuditLogListView:
 
         response = api_client.get('/api/v1/audit/logs')
         assert response.status_code == 200
-        assert response.data['results'][0]['id'] == log2.id
-        assert response.data['results'][1]['id'] == log1.id
+        assert response.data['results'][0]['id'] == str(log2.id)
+        assert response.data['results'][1]['id'] == str(log1.id)

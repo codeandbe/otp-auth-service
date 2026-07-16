@@ -1,6 +1,6 @@
 from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, OpenApiResponse
 from .models import AuditLog
 from .serializers import AuditLogSerializer
 from .filters import AuditLogFilter
@@ -20,7 +20,10 @@ class AuditLogListView(generics.ListAPIView):
     @extend_schema(
         summary="List audit logs",
         description="Retrieve paginated audit logs with optional filtering",
-        responses={200: AuditLogSerializer},
+        responses={
+            200: AuditLogSerializer,
+            401: OpenApiResponse(description="Authentication required"),
+        },
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)

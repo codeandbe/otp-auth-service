@@ -1,5 +1,4 @@
 import pytest
-from django.test import override_settings
 from rest_framework.test import APIClient
 from apps.accounts.models import User
 
@@ -10,13 +9,11 @@ def api_client():
 
 
 @pytest.fixture
-def clear_redis(django_db_setup):
+def clear_redis(fake_redis):
     """Clear Redis before each test."""
-    from django.core.cache import cache
-    redis_client = cache._cache.client
-    redis_client.flushdb()
+    fake_redis.flushdb()
     yield
-    redis_client.flushdb()
+    fake_redis.flushdb()
 
 
 class TestOTPRequestView:
@@ -170,36 +167,31 @@ class TestOTPVerifyView:
         assert response.data['user']['created'] is False
 
     @pytest.mark.django_db
+    @pytest.mark.django_db(transaction=True)
     def test_concurrent_verify_one_time_use(self, clear_redis):
         """Test that concurrent verify requests with same OTP only succeed once."""
         import threading
         from apps.accounts.services.otp_service import OTPService
+
         otp_service = OTPService()
-        
         email = 'concurrent@example.com'
         otp = otp_service.generate_otp()
         otp_service.store_otp(email, otp)
-        
+
         results = []
-        
+
         def verify_otp():
             client = APIClient()
             response = client.post('/api/v1/auth/otp/verify', {'email': email, 'otp': otp})
             results.append(response.status_code)
-        
-        # Create two threads that will try to verify the same OTP concurrently
+
         thread1 = threading.Thread(target=verify_otp)
         thread2 = threading.Thread(target=verify_otp)
-        
-        # Start both threads at nearly the same time
         thread1.start()
         thread2.start()
-        
-        # Wait for both to complete
         thread1.join()
         thread2.join()
-        
-        # Exactly one should succeed (200) and one should fail (400)
+
         assert 200 in results
         assert 400 in results
         assert len(results) == 2

@@ -1,6 +1,7 @@
 import hashlib
 import secrets
-from django.core.cache import cache
+
+from .redis_client import get_redis_client
 from .redis_keys import RedisKeys
 
 
@@ -11,7 +12,7 @@ class OTPService:
     """
 
     def __init__(self):
-        self.redis_client = cache._cache.client  # type: ignore
+        self.redis_client = get_redis_client()
 
     def generate_otp(self) -> str:
         """

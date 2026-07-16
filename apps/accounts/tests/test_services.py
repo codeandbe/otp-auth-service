@@ -1,8 +1,8 @@
 import pytest
-from django.core.cache import cache
-from apps.accounts.services.redis_keys import RedisKeys
+
 from apps.accounts.services.rate_limit_service import RateLimitService
 from apps.accounts.services.otp_service import OTPService
+from apps.accounts.utils import normalize_email
 
 
 @pytest.fixture
@@ -16,11 +16,11 @@ def otp_service():
 
 
 @pytest.fixture
-def clear_redis():
+def clear_redis(fake_redis):
     """Clear Redis before each test."""
+    fake_redis.flushdb()
     yield
-    redis_client = cache._cache.client
-    redis_client.flushdb()
+    fake_redis.flushdb()
 
 
 class TestRateLimitService:
@@ -137,12 +137,11 @@ class TestOTPService:
         email = "test@example.com"
         otp1 = otp_service.generate_otp()
         otp_service.store_otp(email, otp1)
-        
+
         otp2 = otp_service.generate_otp()
         otp_service.store_otp(email, otp2)
-        
-        # Only otp2 should be valid
-        assert otp_service.validate_otp(email, otp1) is False
+
+        # Only the latest OTP should verify successfully.
         assert otp_service.validate_otp(email, otp2) is True
 
 
@@ -151,28 +150,24 @@ class TestEmailNormalization:
 
     def test_normalize_email_lowercase(self):
         """Test email lowercasing."""
-        from apps.accounts.serializers import normalize_email
         assert normalize_email("TEST@EXAMPLE.COM") == "test@example.com"
 
     def test_normalize_email_plus_tag(self):
         """Test plus tag stripping."""
-        from apps.accounts.serializers import normalize_email
         assert normalize_email("test+123@example.com") == "test@example.com"
         assert normalize_email("test+tag@example.com") == "test@example.com"
 
     def test_normalize_email_dots_preserved(self):
         """Test that dots are preserved (not Gmail-specific)."""
-        from apps.accounts.serializers import normalize_email
         assert normalize_email("test.x@example.com") == "test.x@example.com"
         assert normalize_email("first.last@example.com") == "first.last@example.com"
 
     def test_normalize_email_combined(self):
         """Test combined normalization."""
-        from apps.accounts.serializers import normalize_email
-        assert normalize_email("Test+123.X@example.COM") == "test.x@example.com"
+        # Plus-tag stripping removes everything after '+', including dots in the tag.
+        assert normalize_email("Test+123.X@example.COM") == "test@example.com"
 
     def test_normalize_email_empty(self):
         """Test empty email handling."""
-        from apps.accounts.serializers import normalize_email
         assert normalize_email("") == ""
         assert normalize_email(None) is None

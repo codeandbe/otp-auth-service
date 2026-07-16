@@ -1,5 +1,4 @@
-import redis
-from django.core.cache import cache
+from .redis_client import get_redis_client
 from .redis_keys import RedisKeys
 
 
@@ -10,12 +9,7 @@ class RateLimitService:
     """
 
     def __init__(self):
-        # Get raw Redis client for atomic operations
-        try:
-            self.redis_client = cache._cache.client  # type: ignore
-        except AttributeError:
-            # Fallback for different cache backends
-            self.redis_client = cache.client  # type: ignore
+        self.redis_client = get_redis_client()
 
     def check_rate_limit(self, key: str, max_requests: int, ttl: int) -> tuple[bool, int]:
         """
