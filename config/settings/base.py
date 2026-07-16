@@ -27,7 +27,9 @@ LOGGING = {
     },
 }
 
-ALLOWED_HOSTS = ['*']
+# In production replace '*' with your actual domain(s).
+# '*' is acceptable for the Docker dev/test environment.
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',')
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -82,4 +84,5 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

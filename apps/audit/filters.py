@@ -4,22 +4,32 @@ from .models import AuditLog
 
 
 class AuditLogFilter(django_filters.FilterSet):
+    """
+    FilterSet for AuditLog.
+
+    Supported query parameters:
+      email       – case-insensitive substring match
+      event       – exact match
+      from        – created_at >= value  (aliased via the view)
+      to          – created_at <= value  (aliased via the view)
+
+    The ``from`` and ``to`` parameters cannot be declared directly as
+    FilterSet field names because they are Python reserved words / invalid
+    identifiers.  Instead the view remaps them to ``created_from`` /
+    ``created_to`` before passing the data to this FilterSet (see
+    AuditLogListView.get_filterset_kwargs).  This keeps the FilterSet
+    itself clean and avoids mutating the immutable QueryDict.
+    """
+
     email = django_filters.CharFilter(lookup_expr="icontains")
     event = django_filters.CharFilter(lookup_expr="exact")
-    created_from = django_filters.DateTimeFilter(field_name="created_at", lookup_expr="gte")
-    created_to = django_filters.DateTimeFilter(field_name="created_at", lookup_expr="lte")
+    created_from = django_filters.DateTimeFilter(
+        field_name="created_at", lookup_expr="gte"
+    )
+    created_to = django_filters.DateTimeFilter(
+        field_name="created_at", lookup_expr="lte"
+    )
 
     class Meta:
         model = AuditLog
         fields = ["email", "event", "created_from", "created_to"]
-
-    def __init__(self, data=None, *args, **kwargs):
-        if data is not None:
-            data = data.copy()
-            if "from" in data:
-                data.setlist("created_from", data.getlist("from"))
-                del data["from"]
-            if "to" in data:
-                data.setlist("created_to", data.getlist("to"))
-                del data["to"]
-        super().__init__(data, *args, **kwargs)

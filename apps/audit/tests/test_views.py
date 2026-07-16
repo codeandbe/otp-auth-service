@@ -97,33 +97,45 @@ class TestAuditLogListView:
         assert response.data['results'][0]['event'] == 'otp_requested'
 
     def test_list_audit_logs_filter_by_date_range(self, api_client, authenticated_user):
-        """Test filtering by date range."""
+        """Test filtering by date range using the `from` query parameter."""
+        from django.utils import timezone
+
         now = timezone.now()
-        
-        AuditLog.objects.create(
-            event='otp_requested',
-            email='test@example.com',
-            ip_address='192.168.1.1',
-            user_agent='Mozilla/5.0',
+        two_days_ago = now - timezone.timedelta(days=2)
+
+        # Recent log — auto_now_add sets created_at to ~now
+        recent = AuditLog.objects.create(
+            event="otp_requested",
+            email="recent@example.com",
+            ip_address="192.168.1.1",
+            user_agent="Mozilla/5.0",
             metadata={},
-            created_at=now
-        )
-        
-        # Create log in the past
-        past_log = AuditLog.objects.create(
-            event='otp_requested',
-            email='test@example.com',
-            ip_address='192.168.1.1',
-            user_agent='Mozilla/5.0',
-            metadata={},
-            created_at=now - timezone.timedelta(days=2)
         )
 
-        from_date = (now - timezone.timedelta(days=1)).isoformat().replace("+", "%2B")
-        response = api_client.get(f"/api/v1/audit/logs?from={from_date}")
+        # Old log — created now, then backdated to 2 days ago via update()
+        # (auto_now_add ignores explicit values on create)
+        past_log = AuditLog.objects.create(
+            event="otp_requested",
+            email="past@example.com",
+            ip_address="192.168.1.1",
+            user_agent="Mozilla/5.0",
+            metadata={},
+        )
+        AuditLog.objects.filter(pk=past_log.pk).update(created_at=two_days_ago)
+
+        # Confirm the update took effect in the DB
+        past_log_refreshed = AuditLog.objects.get(pk=past_log.pk)
+        assert past_log_refreshed.created_at < now - timezone.timedelta(days=1)
+
+        # Filter: entries where created_at >= yesterday
+        # Use UTC Z suffix (not +00:00) to avoid the '+' being decoded as a
+        # space when passed as a query parameter.
+        yesterday = (now - timezone.timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        response = api_client.get(f"/api/v1/audit/logs?from={yesterday}")
         assert response.status_code == 200
-        assert len(response.data['results']) == 1
-        assert response.data['results'][0]['id'] != past_log.id
+        result_ids = [r["id"] for r in response.data["results"]]
+        assert str(recent.id) in result_ids
+        assert str(past_log.id) not in result_ids
 
     def test_list_audit_logs_pagination(self, api_client, authenticated_user):
         """Test pagination."""
@@ -144,28 +156,28 @@ class TestAuditLogListView:
         assert 'next' in response.data
 
     def test_list_audit_logs_ordering(self, api_client, authenticated_user):
-        """Test that logs are ordered by created_at descending."""
-        now = timezone.now()
-        
+        """Logs must be ordered by created_at descending."""
         log1 = AuditLog.objects.create(
-            event='otp_requested',
-            email='test1@example.com',
-            ip_address='192.168.1.1',
-            user_agent='Mozilla/5.0',
+            event="otp_requested",
+            email="test1@example.com",
+            ip_address="192.168.1.1",
+            user_agent="Mozilla/5.0",
             metadata={},
-            created_at=now - timezone.timedelta(minutes=10)
         )
-        
         log2 = AuditLog.objects.create(
-            event='otp_requested',
-            email='test2@example.com',
-            ip_address='192.168.1.1',
-            user_agent='Mozilla/5.0',
+            event="otp_requested",
+            email="test2@example.com",
+            ip_address="192.168.1.1",
+            user_agent="Mozilla/5.0",
             metadata={},
-            created_at=now
+        )
+        # Backdate log1 so log2 is definitely newer
+        from django.utils import timezone
+        AuditLog.objects.filter(pk=log1.pk).update(
+            created_at=timezone.now() - timezone.timedelta(minutes=10)
         )
 
-        response = api_client.get('/api/v1/audit/logs')
+        response = api_client.get("/api/v1/audit/logs")
         assert response.status_code == 200
-        assert response.data['results'][0]['id'] == str(log2.id)
-        assert response.data['results'][1]['id'] == str(log1.id)
+        result_ids = [r["id"] for r in response.data["results"]]
+        assert result_ids.index(str(log2.id)) < result_ids.index(str(log1.id))
